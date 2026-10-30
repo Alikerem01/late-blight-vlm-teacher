@@ -1,0 +1,17 @@
+# Pre-annotation and VLM candidates (Apple Silicon only)
+mlx==0.32.2
+mlx-vlm==0.7.0
+transformers==5.16.1
+huggingface_hub
+pillow
+pillow-heif
+
+# Analysis
+numpy
+scipy
+pandas
+matplotlib
+
+# Students and latency
+ultralytics==8.4.144
+torch

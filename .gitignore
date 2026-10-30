@@ -1,0 +1,23 @@
+# Python / environments
+__pycache__/
+*.pyc
+.venv/
+.DS_Store
+
+# Data, weights and run outputs (not public)
+*.pt
+*.zip
+*.jpg
+*.jpeg
+*.png
+*.heic
+*_images/
+*_images_labels/
+VLM_auto_annotation/kaynak_a/
+VLM_auto_annotation/kaynak_b/
+konferans_makale_calismasi/veri/
+konferans_makale_calismasi/makale/
+konferans_makale_calismasi/uzman_veriler*/
+konferans_makale_calismasi/paketler/
+colab/paketler/
+colab/sonuclar/
