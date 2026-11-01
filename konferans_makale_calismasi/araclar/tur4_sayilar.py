@@ -8,6 +8,9 @@ kendisi hesaplamaz, yalnız biçimlendirir. Kaynak dosyalar:
   veri/gecikme_lat_local.json        gecikme_olc.py           (LAT-LOCAL)
   veri/k_boyutu_benzetim_n<n>.json   k_boyutu_benzetim.py --n (gerçek n için güç; yoksa komutu yazar)
 
+Kaynak dosyalar sayıları tam duyarlıkla tutar, her sayı burada bir kez ve yarım yukarı (ROUND_HALF_UP) yuvarlanır.
+Üç ondalıklı kaydı ikinci kez iki ondalığa yuvarlamak sonucu 0,01 kaydırabilir.
+
 Biçim: P, R, F1 ve AUROC üç ondalık; aralık tabloda "[a, b]", metinde "a--b"; yüzde bir ondalık; süre tam
 saniye; eksi değer tabloda `$-0.120$`. Eksik veri "—" ve nedeni. Yorum kimlikleri (R-VLM-INTERP, E1-INTERP)
 için yorum yazılmaz, ilgili sayılar listelenir. TOOL-AVAIL (depo bağlantısı) ve GUIDE proje sahibinin kararıdır.
@@ -20,6 +23,7 @@ import argparse
 import json
 import sys
 from datetime import datetime
+from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 
 KOK = Path(__file__).resolve().parent.parent
@@ -39,13 +43,22 @@ YOK = "—"
 
 
 # ------------------------------------------------------------------ biçim
+def yy(x, b: int = 3) -> str:
+    """Yarım yukarı yuvarlama, b ondalık. `repr` kaydın tam değerini verir (0.015 → 0.02, `f"{x:.2f}"` 0.01 verirdi)."""
+    return str(Decimal(repr(float(x))).quantize(Decimal(1).scaleb(-b), rounding=ROUND_HALF_UP))
+
+
+def isaretli(x, b: int = 3) -> str:
+    return ("+" if x >= 0 else "") + yy(x, b)
+
+
 def f3(x, b: int = 3) -> str:
-    return YOK if x is None else f"{x:.{b}f}"
+    return YOK if x is None else yy(x, b)
 
 
 def tex(x, b: int = 3) -> str:
     """Tablo hücresi: eksi değer matematik kipinde."""
-    return YOK if x is None else (f"${x:.{b}f}$" if x < 0 else f"{x:.{b}f}")
+    return YOK if x is None else (f"${yy(x, b)}$" if x < 0 else yy(x, b))
 
 
 def ga_tablo(g, b: int = 3) -> str:
@@ -53,11 +66,11 @@ def ga_tablo(g, b: int = 3) -> str:
 
 
 def ga_metin(g, b: int = 3) -> str:
-    return YOK if not g or None in g else f"{g[0]:.{b}f}--{g[1]:.{b}f}"
+    return YOK if not g or None in g else f"{yy(g[0], b)}--{yy(g[1], b)}"
 
 
 def yuzde(x) -> str:
-    return YOK if x is None else f"{100 * x:.1f}\\%"
+    return YOK if x is None else f"{yy(100 * x, 1)}\\%"
 
 
 def oku(yol: Path):
@@ -132,11 +145,11 @@ def vcomp(R: Rapor, U: dict | None):
     e2 = sec["en_iyiye_gore"][ikinci]
     R(f"- Seçilen öğretmen (önceden yazılmış kural): **{AD[en_iyi]}**, F1 {f3(kor[en_iyi]['iou_0.5']['F1'], 2)} "
       f"(95% interval {ga_metin(kor[en_iyi]['iou_0.5']['GA95']['F1'], 2)}).",
-      f"- İkinci: {AD[ikinci]}, fark {f3(e2['F1_farki'], 2)} ({ga_metin(e2['GA95'], 2)}), Holm-adjusted p {e2['p_holm']} → "
+      f"- İkinci: {AD[ikinci]}, fark {f3(e2['F1_farki'], 2)} ({ga_metin(e2['GA95'], 2)}), Holm-adjusted p {f3(e2['p_holm'])} → "
       + ("**ayrışıyor**" if e2["ayrisiyor"] else "**ayrışmıyor: \"not separable\" diye yazılır**") + ".",
       f"- Ayrışmayanlar (Holm p ≥ 0.05): {', '.join(AD[m] for m in sec['ayrismayanlar']) or 'yok'}.",
       "- En iyiye beş fark (Holm): " + "; ".join(
-          f"{ETIKET[m]} {f3(v['F1_farki'], 2)} [{ga_metin(v['GA95'], 2)}] p_Holm {v['p_holm']}" for m, v in sec["en_iyiye_gore"].items()))
+          f"{ETIKET[m]} {f3(v['F1_farki'], 2)} [{ga_metin(v['GA95'], 2)}] p_Holm {f3(v['p_holm'])}" for m, v in sec["en_iyiye_gore"].items()))
     if sec.get("nokta_esitligi"):
         R.uyari.append(f"Nokta tahmininde tam eşitlik {sec['nokta_esitligi']}: yerinde bitki F1'iyle seçildi, metinde belirtilmeli.")
     R("", "Sahne kırılımı (yerinde bitki birincil), F1 at 0.5 [GA]: " + "; ".join(
@@ -197,7 +210,7 @@ def bolge(R: Rapor, U: dict | None):
         x = B.get(m)
         if x:
             R(f"- {k}: bölgesi bulunan uzman kutusu {yuzde(x['uzman_kutusu_bolgesi_bulunan'])}, uzman lezyonu içeren aday kutusu "
-              f"{yuzde(x['model_kutusu_uzman_lezyonu_iceren'])} · kutu alanı medyanı aday %{x['alan_medyan_yuzde_model']:.2f}, uzman %{x['alan_medyan_yuzde_uzman']:.2f}")
+              f"{yuzde(x['model_kutusu_uzman_lezyonu_iceren'])} · kutu alanı medyanı aday %{yy(x['alan_medyan_yuzde_model'], 2)}, uzman %{yy(x['alan_medyan_yuzde_uzman'], 2)}")
     o = ((U or {}).get("ortak") or {}).get("bolge_duzeyi_uzman_uzman")
     if o:
         R(f"- Uzman ↔ uzman (O, tavan): {yuzde(o['uzman_kutusu_bolgesi_bulunan'])} / {yuzde(o['model_kutusu_uzman_lezyonu_iceren'])}")
@@ -218,8 +231,8 @@ def guven(R: Rapor):
             if r.get("durum") == "ok":
                 g += [x["guven"] for x in r["tespitler"] if x.get("guven") is not None and x.get("sinif")]
         if g:
-            R(f"- {k}: {len(g)} kutu · aralık {min(g):.2f}--{max(g):.2f} · {len(set(g))} ayrı değer · "
-              f"0.80 ve üstü {100 * sum(x >= 0.8 for x in g) / len(g):.0f}\\%")
+            R(f"- {k}: {len(g)} kutu · aralık {yy(min(g), 2)}--{yy(max(g), 2)} · {len(set(g))} ayrı değer · "
+              f"0.80 ve üstü {yy(100 * sum(x >= 0.8 for x in g) / len(g), 0)}\\%")
 
 
 def alarm(R: Rapor, U: dict | None, S: dict | None):
@@ -231,7 +244,7 @@ def alarm(R: Rapor, U: dict | None, S: dict | None):
         R("— yok."); return
     g0 = next(iter(M.values()))["goruntu_duzeyi"]
     poz = g0["iki_de_var"] + g0["uzman_var_model_yok"]; neg = g0["uzman_yok_model_var"] + g0["iki_de_yok"]
-    R(f"K: {poz} lezyonlu, {neg} lezyonsuz görüntü → her görüntüye \"var\" diyen modelin kesinliği {poz / (poz + neg):.2f}.", "")
+    R(f"K: {poz} lezyonlu, {neg} lezyonsuz görüntü → her görüntüye \"var\" diyen modelin kesinliği {yy(poz / (poz + neg), 2)}.", "")
     kisa = {"gemma4-e2b": "E2B", "gemma4-e2b-8bit": "E2B-8", "gemma4-e4b": "E4B", "gemma4-12b": "12B",
             "qwen3vl-4b": "Q4B", "qwen3vl-8b": "Q8B", "gemma4-e2b-bf16": "E2B bf16"}
     R("Adaylar: " + "; ".join(f"{k} yanlış alarm {M[m]['goruntu_duzeyi']['uzman_yok_model_var']}/{neg}, kaçırma "
@@ -261,7 +274,7 @@ def hitl(R: Rapor, U: dict | None):
     med = lambda anahtar: sure.get("kume_sahne", {}).get(anahtar) or {}
     def kume_medyan(k):
         vals = [x for key, x in sure.get("uzman_kume", {}).items() if key.endswith(f"· {k}")]
-        return " / ".join(f"{round(x['medyan_s'])} s" for x in vals) or YOK
+        return " / ".join(f"{yy(x['medyan_s'], 0)} s" for x in vals) or YOK
     R("Tablo 3 değer sütunu:", "",
       f"- Images completed (K, O, H): {n['kor']}, {n['ortak']}, {n['hitl']}",
       f"- Kept-box rate (IoU 0.5): {f3(v['iou_0.5']['kesinlik'])} {ga_tablo(v['iou_0.5']['GA95']['kesinlik'])}",
@@ -283,10 +296,10 @@ def hitl(R: Rapor, U: dict | None):
        f"(geometriye göre: son hâl ön-etiketle aynı; durum kaydına göre \"approved\": {onay} of {dz['goruntu']})"),
       f"- Image-level agreement: {gd['iki_de_var'] + gd['iki_de_yok']} of {v['goruntu']} images",
       ("- Time per image: ÖLÇÜLEMEDİ (işlem kaydı yok), satır tablodan çıkar" if klasor else
-       f"- Time per image, median (K, H): {round(sure['kume']['kor']['medyan_s']) if 'kor' in sure.get('kume', {}) else YOK} s, "
-      f"{round(sure['kume']['hitl']['medyan_s']) if 'hitl' in sure.get('kume', {}) else YOK} s "
+       f"- Time per image, median (K, H): {yy(sure['kume']['kor']['medyan_s'], 0) if 'kor' in sure.get('kume', {}) else YOK} s, "
+      f"{yy(sure['kume']['hitl']['medyan_s'], 0) if 'hitl' in sure.get('kume', {}) else YOK} s "
       f"(uzman başına K {kume_medyan('kor')}, H {kume_medyan('hitl')}; O {kume_medyan('ortak')})"), "",
-      f"R-EFFORT sahne kırılımı: " + "; ".join(f"{k} {round(x['medyan_s'])} s (n {x['n_goruntu']})" for k, x in sure.get("kume_sahne", {}).items()),
+      f"R-EFFORT sahne kırılımı: " + "; ".join(f"{k} {yy(x['medyan_s'], 0)} s (n {x['n_goruntu']})" for k, x in sure.get("kume_sahne", {}).items()),
       f"R-EFFORT tanımı: {sure.get('tanim', YOK)}; süreli {sure.get('goruntu', {}).get('sureli')}, süresiz {sure.get('goruntu', {}).get('suresiz')} görüntü.")
     if klasor:
         R.uyari.append("Kaynak uzman klasörü (sunucu değil): H'nin döküm satırları uzmanın son etiketiyle VLM ön-etiketinin "
@@ -319,7 +332,7 @@ def ogrenciler(R: Rapor, S: dict | None, L: dict | None, U: dict | None):
     def gecikme(model):
         for v in gec.values():
             if v.get("model") == model and v.get("kol") == "ogretmen" and v.get("tohum") == 42:
-                return f"{v['medyan_ms']:.1f}"
+                return yy(v['medyan_ms'], 1)
         return YOK
     R(f"Öğretmen: {AD.get(ogretmen, ogretmen)}. Sütunlar: Params, GFLOPs, Fidelity F1, F1 on K (teacher / +150 / experts), "
       "AP50 on K (teacher kolu, kör uzman etiketine göre), Latency (ms, medyan).", "", "```latex")
@@ -345,13 +358,13 @@ def ogrenciler(R: Rapor, S: dict | None, L: dict | None, U: dict | None):
             vals = [bul(model, kol, s) for s in (42, 43, 44)]
             f1 = [v["dogruluk"]["iou_0.5"]["F1"] for v in vals if v and "dogruluk" in v]
             if f1:
-                R(f"- {ad} {kol}: " + " / ".join(f3(x) for x in f1) + f" → aralık {min(f1):.3f}--{max(f1):.3f} ({len(f1)} tohum)")
+                R(f"- {ad} {kol}: " + " / ".join(f3(x) for x in f1) + f" → aralık {yy(min(f1))}--{yy(max(f1))} ({len(f1)} tohum)")
     # Yakınsamayan koşu: doğruluk ve sadakat neredeyse sıfır (erken durdurma öğrenme başlamadan kesti)
     for x in kos:
         if x["ad"].startswith("ogrenci_") and x.get("dogruluk", {}).get("iou_0.5", {}).get("F1", 1) < 0.02 \
                 and x["sadakat"]["iou_0.5"]["F1"] < 0.1:
             R.uyari.append(f"{x['ad']}: yakınsamadı ({x.get('epoch')}. dönemde durdu, doğruluk F1 "
-                           f"{x['dogruluk']['iou_0.5']['F1']:.3f}). Tabloda dipnotla gösterilir, protokol dışı yeniden eğitim yok.")
+                           f"{yy(x['dogruluk']['iou_0.5']['F1'])}). Tabloda dipnotla gösterilir, protokol dışı yeniden eğitim yok.")
     E = S.get("kol_esli_farklar_F1_05") or {}
     if E:
         R("", "E1-HITL / E1-EXP — kollar arası eşleştirilmiş fark (F1 @ 0,5, kör uzman etiketine göre, K'de bootstrap, betimsel):")
@@ -360,7 +373,7 @@ def ogrenciler(R: Rapor, S: dict | None, L: dict | None, U: dict | None):
             d = [x[anahtar]["F1_farki"] for _, x in v]
             art = sum(1 for _, x in v if x[anahtar]["sifiri_disliyor"] and x[anahtar]["F1_farki"] > 0)
             eks = sum(1 for _, x in v if x[anahtar]["sifiri_disliyor"] and x[anahtar]["F1_farki"] < 0)
-            return f"{min(d):+.3f}--{max(d):+.3f}, {len(v)} karşılaştırma, sıfırı dışlayan: {art} artış, {eks} azalış"
+            return f"{isaretli(min(d))}--{isaretli(max(d))}, {len(v)} karşılaştırma, sıfırı dışlayan: {art} artış, {eks} azalış"
         yakinsamayan = tuple(x["model"] for x in kos if x["ad"].startswith("ogrenci_") and x["kol"] == "uzman150"
                              and x.get("dogruluk", {}).get("iou_0.5", {}).get("F1", 1) < 0.02)
         R(f"- +150 − teacher (E1-HITL): {ozet('ogretmen_uzman150 − ogretmen')}",
@@ -368,7 +381,7 @@ def ogrenciler(R: Rapor, S: dict | None, L: dict | None, U: dict | None):
           + (f" (yakınsamayan {', '.join(yakinsamayan)} hariç)" if yakinsamayan else ""),
           f"- experts − teacher: {ozet('uzman150 − ogretmen', yakinsamayan)}")
         for k, x in E.items():
-            R(f"  - {k}: " + " · ".join(f"{a} {y['F1_farki']:+.3f} [{y['GA95'][0]:.3f}, {y['GA95'][1]:.3f}]" for a, y in x.items()))
+            R(f"  - {k}: " + " · ".join(f"{a} {isaretli(y['F1_farki'])} [{yy(y['GA95'][0])}, {yy(y['GA95'][1])}]" for a, y in x.items()))
     # Kol başına aralıklar (hakem Tur 2: AP50 bütün kollar, yerinde bitki F1, görüntü düzeyi, IoU 0.3); seçilen
     # öğretmenin bütün koşuları (tohumlar dahil), yakınsamayan hariç
     R("", "Kol başına aralık (seçilen öğretmen, bütün tohumlar, yakınsamayan hariç; kör uzman etiketine göre, K):")
@@ -378,7 +391,7 @@ def ogrenciler(R: Rapor, S: dict | None, L: dict | None, U: dict | None):
              and (x["ad"].startswith("ogrenci_") or x["ad"] == f"slearn_{ogretmen}_yolo11n_t42")]
         if not v:
             continue
-        rng = lambda f: f"{min(map(f, v)):.3f}--{max(map(f, v)):.3f}"
+        rng = lambda f: f"{yy(min(map(f, v)))}--{yy(max(map(f, v)))}"
         R(f"- {kol} (n {len(v)}): F1@0.5 {rng(lambda x: x['dogruluk']['iou_0.5']['F1'])} · F1@0.3 "
           f"{rng(lambda x: x['dogruluk']['iou_0.3']['F1'])} · AP50 {rng(lambda x: x['AP50_dogruluk'])} · in situ F1@0.5 "
           f"{rng(lambda x: x.get('dogruluk_in_situ_F1_05', float('nan')))} · görüntü P {rng(lambda x: x['dogruluk']['goruntu_duzeyi']['kesinlik'])}"

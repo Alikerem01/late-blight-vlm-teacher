@@ -101,15 +101,16 @@ def esik_sec(ref: dict, tahmin: dict, adlar: list[str]) -> tuple[float, float]:
 
 def kutu_olculeri(ref: dict, tahmin: dict, adlar: list[str], tau: float) -> dict:
     s = [goruntu_sayimlari(ref.get(a, []), esikle(tahmin.get(a, []), tau)) for a in adlar]
-    out = {f"iou_{t}": {k: (round(v, 3) if isinstance(v, float) else v) for k, v in prf(s, t).items()} for t in ESIKLER}
+    # Kayıtta tam duyarlık: makalenin sayıları tur4_sayilar.py'de bir kez yuvarlanır (çift yuvarlama olmasın diye)
+    out = {f"iou_{t}": prf(s, t) for t in ESIKLER}
     # görüntü düzeyinde bootstrap %95 GA (10.000, tohum 42; adaylarla aynı yöntem ve aynı indeksler)
-    out["iou_0.5"]["GA95"] = {k: [round(x, 3) for x in v] for k, v in bootstrap(s, 0.5, bootstrap_indeksi(len(adlar))).items()
+    out["iou_0.5"]["GA95"] = {k: [float(x) for x in v] for k, v in bootstrap(s, 0.5, bootstrap_indeksi(len(adlar))).items()
                               if not k.startswith("_")}
     var_ref = [bool(ref.get(a)) for a in adlar]
     var_t = [bool(esikle(tahmin.get(a, []), tau)) for a in adlar]
     tp = sum(r and t for r, t in zip(var_ref, var_t))
-    out["goruntu_duzeyi"] = {"kesinlik": round(tp / sum(var_t), 3) if sum(var_t) else None,
-                             "duyarlilik": round(tp / sum(var_ref), 3) if sum(var_ref) else None,
+    out["goruntu_duzeyi"] = {"kesinlik": tp / sum(var_t) if sum(var_t) else None,
+                             "duyarlilik": tp / sum(var_ref) if sum(var_ref) else None,
                              "tp": tp, "tahmin_var": sum(var_t), "referans_var": sum(var_ref), "goruntu": len(adlar)}
     return out
 
@@ -154,7 +155,7 @@ def ap50(ref: dict, tahmin: dict, adlar: list[str]) -> float | None:
     if not tp:
         return 0.0
     sonuc = ap_per_class(np.array(tp)[:, None], np.array(conf), np.zeros(len(tp)), np.zeros(n_ref))
-    return round(float(sonuc[5][0, 0]), 4)
+    return float(sonuc[5][0, 0])
 
 
 # ------------------------------------------------------------------ ana akış
@@ -208,7 +209,7 @@ def main() -> int:
         tau, f_dogr = esik_sec(dogr_ref, tahmin, dogr_adlar)
         K = B["kor"]
         satir = {"ad": klasor.name, "ogretmen": ogretmen, "kol": kol, "model": bilgi["model"], "tohum": bilgi["tohum"],
-                 "epoch": bilgi.get("epoch"), "esik": tau, "dogrulama_F1_05": round(f_dogr, 3),
+                 "epoch": bilgi.get("epoch"), "esik": tau, "dogrulama_F1_05": f_dogr,
                  "sadakat": kutu_olculeri(og, tahmin, K, tau), "AP50_sadakat": ap50(og, tahmin, K)}
         if bilgi.get("asama") == 1:
             slearn_sayim[ogretmen] = [goruntu_sayimlari(og.get(a, []), esikle(tahmin.get(a, []), tau)) for a in K]
@@ -219,11 +220,12 @@ def main() -> int:
             satir["AP50_dogruluk"] = ap50(uzman, tahmin, K)
             yerinde = [a for a in K if sahne.get(a) == "in_situ"]
             if yerinde:   # hakem R2-MA (2026-10-12): yerinde bitki görüntüleri, aynı eşik
-                satir["dogruluk_in_situ_F1_05"] = round(f1_05(uzman, tahmin, yerinde, tau), 3)
+                satir["dogruluk_in_situ_F1_05"] = f1_05(uzman, tahmin, yerinde, tau)
         satirlar.append(satir)
         d = satir.get("dogruluk", {}).get("iou_0.5", {}).get("F1")
-        print(f"{klasor.name:48s} τ={tau:.2f} · sadakat F1@.5 {satir['sadakat']['iou_0.5']['F1']} "
-              f"AP50 {satir['AP50_sadakat']} · doğruluk F1@.5 {d if d is not None else '–'}")
+        k3 = lambda x: "–" if x is None else f"{x:.3f}"
+        print(f"{klasor.name:48s} τ={tau:.2f} · sadakat F1@.5 {k3(satir['sadakat']['iou_0.5']['F1'])} "
+              f"AP50 {k3(satir['AP50_sadakat'])} · doğruluk F1@.5 {k3(d)}")
     # S-LEARN: adayların öğrenilebilirlik farkı, aynı K görüntülerinde eşleştirilmiş bootstrap (her öğrenci kendi
     # öğretmeninin K etiketine göre; betimsel, çoklu karşılaştırma düzeltmesi yok)
     esli = {}
@@ -235,7 +237,7 @@ def main() -> int:
         for i, a in enumerate(adlar):
             for b in adlar[i + 1:]:
                 lo, hi = ga(dag[a] - dag[b])
-                esli[f"{a} − {b}"] = {"F1_farki": round(f1[a] - f1[b], 3), "GA95": [round(lo, 3), round(hi, 3)],
+                esli[f"{a} − {b}"] = {"F1_farki": f1[a] - f1[b], "GA95": [float(lo), float(hi)],
                                       "sifiri_disliyor": bool(lo > 0 or hi < 0)}
     # Kollar arası fark (2026-10-12): aynı model ve tohumda, kör uzman etiketine göre F1 @ 0,5, K görüntülerinde
     # eşleştirilmiş bootstrap (aynı indeksler; betimsel, çoklu karşılaştırma düzeltmesi yok). Aşama 1'in seçilen
@@ -252,7 +254,7 @@ def main() -> int:
             for a, b in (("ogretmen_uzman150", "ogretmen"), ("uzman150", "ogretmen_uzman150"), ("uzman150", "ogretmen")):
                 if a in kollar and b in kollar:
                     lo, hi = ga(dag[a] - dag[b])
-                    out[f"{a} − {b}"] = {"F1_farki": round(f1[a] - f1[b], 3), "GA95": [round(lo, 3), round(hi, 3)],
+                    out[f"{a} − {b}"] = {"F1_farki": f1[a] - f1[b], "GA95": [float(lo), float(hi)],
                                          "sifiri_disliyor": bool(lo > 0 or hi < 0)}
             kol_esli[f"{model} t{tohum}"] = out
     args.cikti.write_text(json.dumps({"yontem": __doc__.strip().splitlines()[0], "kosular": satirlar,

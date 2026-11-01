@@ -155,18 +155,21 @@ def cohen_kappa(a: int, b: int, c: int, d: int) -> float:
     return (po - pe) / (1 - pe) if pe < 1 else float("nan")
 
 
-def yuvarla(x, anahtar: str = ""):
+def yuvarla(x, anahtar: str = "", kayit: bool = False):
+    """JSON'a uygun türler. Konsolda üç ondalık (p değerleri dört). kayit=True: kayan noktalar tam duyarlıkla
+    kalır, makalenin sayıları `tur4_sayilar.py`'de bir kez yuvarlanır (üç ondalıklı kaydı ikinci kez iki ondalığa
+    yuvarlamak sonucu 0,01 kaydırabilir)."""
     if isinstance(x, (bool, np.bool_)):
         return bool(x)
     if isinstance(x, (np.integer,)):
         return int(x)
     if isinstance(x, (float, np.floating)):
         x = float(x)
-        return None if np.isnan(x) else round(x, 4 if anahtar.startswith("p_") else 3)
+        return None if np.isnan(x) else x if kayit else round(x, 4 if anahtar.startswith("p_") else 3)
     if isinstance(x, dict):
-        return {k: yuvarla(v, str(k)) for k, v in x.items() if not str(k).startswith("_")}
+        return {k: yuvarla(v, str(k), kayit) for k, v in x.items() if not str(k).startswith("_")}
     if isinstance(x, (list, tuple)):
-        return [yuvarla(v, anahtar) for v in x]
+        return [yuvarla(v, anahtar, kayit) for v in x]
     return x
 
 
@@ -700,7 +703,7 @@ def main() -> int:
             satirlar.append({"kume": "hitl", "model": "gemma4-e2b_v0", "goruntu": a, "sahne": H[a]["sahne"], "uzman": H[a]["uzman"], **sy})
     sonuc["uzman_suresi"] = uzman_suresi(paket["islem"], paket["sahne_haritasi"])
     args.cikti.mkdir(parents=True, exist_ok=True)
-    (args.cikti / "uzman_karsilastirma.json").write_text(json.dumps(yuvarla(sonuc), ensure_ascii=False, indent=1), encoding="utf-8")
+    (args.cikti / "uzman_karsilastirma.json").write_text(json.dumps(yuvarla(sonuc, kayit=True), ensure_ascii=False, indent=1), encoding="utf-8")
     if satirlar:
         with open(args.cikti / "uzman_karsilastirma_goruntu.csv", "w", newline="", encoding="utf-8") as fh:
             w = csv.DictWriter(fh, fieldnames=list(satirlar[0]))

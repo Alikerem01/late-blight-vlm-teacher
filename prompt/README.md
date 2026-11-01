@@ -2,7 +2,7 @@
 
 | File | Used for |
 |---|---|
-| `prompt_gemma_tr.txt` | Gemma 4 models (first run and candidates). Boxes as `box_2d`, `[y1, x1, y2, x2]`, normalised to 0–1000 |
+| `prompt_gemma_tr.txt` | Gemma 4 models (pre-annotation of the HITL set and the Gemma candidates). Boxes as `box_2d`, `[y1, x1, y2, x2]`, normalised to 0–1000 |
 | `prompt_qwen_tr.txt` | Qwen3-VL models. Identical except the output contract follows Qwen3-VL's documented convention (`bbox_2d`, `[x1, y1, x2, y2]`, same 0–1000 scale) |
 | `prompt_en.md` | English translation, as printed in the paper (Fig. 2) |
 
